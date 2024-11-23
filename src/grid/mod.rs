@@ -1,244 +1,157 @@
-use std::{
-    collections::HashSet,
-    fmt::{Display, Pointer},
-    ops,
-};
+#![allow(unused)]
+use std::ops::Div;
 
-pub trait Pos {}
+use lazy_static::lazy_static;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AxialPos {
-    pub q: i64,
-    pub r: i64,
+pub mod hex_pos;
+pub mod map;
+
+pub use crate::grid::hex_pos::{AxialPos, CubePos, Directions};
+pub use crate::grid::map::{Data, GridShape, Map};
+
+pub enum HexOrientation {
+    Pointy,
+    Flat,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Directions {
-    North,
-    NorthEast,
-    SouthEast,
-    South,
-    SouthWest,
-    NorthWest,
+lazy_static! {
+    static ref SQRT_3: f64 = f64::sqrt(3.0);
+    static ref PI: f64 = 3.14159265358979;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CubePos {
-    pub q: i64,
-    pub r: i64,
-    pub s: i64,
+pub struct Matrix(f64, f64, f64, f64);
+
+pub struct Orientation {
+    pub start_angle: f64,
+    pub to_screen: Matrix,
+    pub to_grid: Matrix,
 }
 
-impl CubePos {
-    pub fn new(q: i64, r: i64, s: i64) -> Self {
-        assert_eq!(q + r + s, 0);
-        Self { q, r, s }
-    }
-}
-
-impl Default for CubePos {
-    fn default() -> Self {
-        Self { q: 0, r: 0, s: 0 }
-    }
-}
-
-impl Display for CubePos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "[ Q: {}, R: {}, S: {} ]",
-            self.q, self.r, self.s
-        ))
-    }
-}
-
-impl Pos for CubePos {}
-
-impl Into<AxialPos> for CubePos {
-    fn into(self) -> AxialPos {
-        AxialPos {
-            q: self.q,
-            r: self.r,
-        }
-    }
-}
-
-impl ops::Add for CubePos {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
+impl Orientation {
+    pub fn new(vals: (f64, f64, f64, f64, f64, f64, f64, f64), start_angle: f64) -> Self {
         Self {
-            q: self.q + rhs.q,
-            r: self.r + rhs.r,
-            s: self.s + rhs.s,
+            start_angle,
+            to_screen: Matrix {
+                0: vals.0,
+                1: vals.1,
+                2: vals.2,
+                3: vals.3,
+            },
+            to_grid: Matrix {
+                0: vals.4,
+                1: vals.5,
+                2: vals.6,
+                3: vals.7,
+            },
         }
     }
 }
 
-impl ops::AddAssign for CubePos {
-    fn add_assign(&mut self, rhs: Self) {
-        let val = *self + rhs;
-        *self = val
+lazy_static! {
+    static ref POINTY: Orientation = Orientation::new(
+        (
+            *SQRT_3,
+            (*SQRT_3) / 2.0,
+            0.0,
+            3.0 / 2.0,
+            *SQRT_3 / 3.0,
+            -1.0 / 3.0,
+            0.0,
+            (2.0 / 3.0)
+        ),
+        0.5
+    );
+    static ref FLAT: Orientation = Orientation::new(
+        (
+            3.0 / 2.0,
+            0.0,
+            *SQRT_3 / 2.0,
+            *SQRT_3,
+            2.0 / 3.0,
+            0.0,
+            -1.0 / 3.0,
+            *SQRT_3 / 3.0
+        ),
+        0.0
+    );
+}
+
+#[derive(Default, Debug, PartialEq)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Point {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
     }
 }
 
-impl ops::Sub for CubePos {
-    type Output = Self;
+/// Stores a map layout relative to a point.
+pub struct Layout {
+    /// Orientation: POINTY or FLAT.
+    pub orientation: Orientation,
+    /// Hexagon size.
+    pub size: (f64, f64),
+    /// Center of layout.
+    pub origin: Point,
+}
 
-    fn sub(self, rhs: Self) -> Self::Output {
+impl Layout {
+    pub fn new(orientation: Orientation, size: (f64, f64), origin: Point) -> Self {
         Self {
-            q: self.q - rhs.q,
-            r: self.r - rhs.r,
-            s: self.s - rhs.s,
+            orientation,
+            size,
+            origin,
         }
     }
-}
 
-impl ops::SubAssign for CubePos {
-    fn sub_assign(&mut self, rhs: Self) {
-        let val = *self - rhs;
-        *self = val
+    pub fn hex_to_pixel(&self, hex: AxialPos) -> Point {
+        let m = &self.orientation.to_screen;
+        let s = self.size;
+        let origin = &self.origin;
+        let x = (m.0 * (hex.q as f64) + m.1 * (hex.r as f64)) * (s.0 as f64);
+        let y = (m.2 * (hex.q as f64) + m.3 * (hex.r as f64)) * (s.1 as f64);
+        Point::new(x + origin.x, y + origin.y)
     }
-}
 
-impl AxialPos {
-    pub fn new(q: i64, r: i64) -> Self {
-        Self { q, r }
-    }
-}
-
-impl Default for AxialPos {
-    fn default() -> Self {
-        Self { q: 0, r: 0 }
-    }
-}
-
-impl Display for AxialPos {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("[ Q: {}, R: {} ]", self.q, self.r))
-    }
-}
-
-impl Into<CubePos> for AxialPos {
-    fn into(self) -> CubePos {
+    pub fn pixel_to_hex(&self, p: Point) -> CubePos {
+        let pt = Point {
+            x: (p.x - self.origin.x),
+            y: (p.y - self.origin.y),
+        };
+        let m = &self.orientation.to_grid;
+        let size = self.size;
+        let q = m.0 * pt.x + m.1 * pt.y / size.0;
+        let r = m.2 * pt.x + m.3 * pt.y / size.1;
         CubePos {
-            q: self.q,
-            r: self.r,
-            s: -self.q - self.r,
+            q: (q as f64),
+            r: (r as f64),
+            s: ((-q - r) as f64),
         }
     }
 }
 
-impl Pos for AxialPos {}
-
-impl ops::Add for AxialPos {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            q: self.q + rhs.q,
-            r: self.r + rhs.r,
-        }
+pub fn hex_corner_offset(layout: &Layout, corner: i32) -> Point {
+    let size = layout.size;
+    let angle = 2.0 * *PI * (layout.orientation.start_angle + f64::from(corner)).div(6.0);
+    Point {
+        x: (size.0) * f64::cos(angle),
+        y: (size.1) * f64::sin(angle),
     }
 }
 
-impl ops::AddAssign for AxialPos {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs
+pub fn hex_polygon_corners(layout: &Layout, hex: CubePos) -> Vec<Point> {
+    let center = layout.hex_to_pixel(hex.into());
+    let mut corners: Vec<Point> = Vec::with_capacity(7);
+    for i in 0..6 {
+        let offset = hex_corner_offset(layout, i);
+        let p = Point {
+            x: center.x + offset.x,
+            y: center.y + offset.y,
+        };
+        corners.push(p);
     }
-}
-
-impl ops::Sub for AxialPos {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            q: self.q - rhs.q,
-            r: self.r - rhs.r,
-        }
-    }
-}
-
-pub fn cube_dir(dir: Directions) -> CubePos {
-    match dir {
-        Directions::North => CubePos::new(0, -1, 1),
-        Directions::NorthEast => CubePos::new(1, -1, 0),
-        Directions::SouthEast => CubePos::new(1, 0, -1),
-        Directions::South => CubePos::new(0, 1, -1),
-        Directions::SouthWest => CubePos::new(-1, 1, 0),
-        Directions::NorthWest => CubePos::new(-1, 0, 1),
-    }
-}
-
-pub fn cube_diagonal_dir(dir: Directions) -> CubePos {
-    match dir {
-        Directions::North => CubePos::new(1, -2, 1),
-        Directions::NorthEast => CubePos::new(2, -1, -1),
-        Directions::SouthEast => CubePos::new(1, 1, -2),
-        Directions::South => CubePos::new(-1, -1, 2),
-        Directions::SouthWest => CubePos::new(-2, 1, 1),
-        Directions::NorthWest => CubePos::new(-1, -1, 2),
-    }
-}
-
-pub fn cube_neighbor(orig: CubePos, dir: Directions) -> CubePos {
-    orig + cube_dir(dir)
-}
-
-pub fn cube_diag_neighbor(orig: CubePos, dir: Directions) -> CubePos {
-    orig + cube_diagonal_dir(dir)
-}
-
-pub fn axial_dir(dir: Directions) -> AxialPos {
-    match dir {
-        Directions::North => AxialPos::new(0, -1),
-        Directions::NorthEast => AxialPos::new(1, -1),
-        Directions::SouthEast => AxialPos::new(1, 0),
-        Directions::South => AxialPos::new(0, -1),
-        Directions::SouthWest => AxialPos::new(-1, 1),
-        Directions::NorthWest => AxialPos::new(-1, 0),
-    }
-}
-
-pub fn axial_neighbor(orig: AxialPos, dir: Directions) -> AxialPos {
-    orig + axial_dir(dir)
-}
-
-pub enum GridShape {
-    Rectangle,
-    Hexagon,
-    Rhombus,
-    PointyRectangle,
-}
-
-pub trait Grid {
-    fn get_tiles() -> Vec<Box<dyn Pos>>;
-}
-
-pub struct GridHash {
-    pub tiles: HashSet<AxialPos>,
-}
-
-pub struct Grid2D<'a> {
-    pub tiles: &'a mut [Vec<AxialPos>],
-    pub shape: GridShape,
-}
-
-impl<'a> Grid2D<'a> {
-    pub fn pos_to_index(&'a self, pos: AxialPos) -> (usize, usize) {
-        match self.shape {
-            GridShape::Rectangle => {
-                let x = pos.r as usize;
-                let y = (pos.q + i64::div_floor(pos.r, 2)) as usize;
-                return (x, y);
-            }
-            GridShape::Hexagon => {
-                let x = pos.r as usize;
-                // let y = (pos.q - i64::max(0)) as usize;
-                // return (x, y);
-                return (0, 0);
-            }
-            GridShape::Rhombus => (pos.r as usize, pos.q as usize),
-            GridShape::PointyRectangle => todo!(),
-        }
-    }
+    corners
 }
